@@ -35,9 +35,9 @@ def extract_media():
     if not url:
         return jsonify({"error": "Please provide a valid link."}), 400
 
-    # THE FIX: Tell it to only grab files where video and audio are already combined
+    # THE FIX: The Bulletproof Format Fallback
     ydl_opts = {
-        'format': 'best[ext=mp4]/b',
+        'format': '22/18/b',
         'quiet': True,
         'no_warnings': True,
     }
