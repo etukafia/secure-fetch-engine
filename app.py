@@ -19,11 +19,12 @@ def extract_media():
     if not url:
         return jsonify({"error": "Please provide a valid link."}), 400
 
-    # Engine settings
+    # Engine settings - Now equipped with the VIP Pass (Cookies)
     ydl_opts = {
         'format': 'best',
         'quiet': True,
-        'no_warnings': True
+        'no_warnings': True,
+        'cookiefile': '/etc/secrets/cookies.txt' # Looks for the secret file in Render
     }
 
     try:
@@ -33,7 +34,7 @@ def extract_media():
             
             return jsonify({"success": True, "video_url": video_url})
     except Exception as e:
-        # DIAGNOSTIC MODE: This will now send the exact error message to your screen
+        # Sends the exact error message to your screen if something goes wrong
         return jsonify({"success": False, "error": f"Engine Error: {str(e)}"}), 500
 
 if __name__ == '__main__':
