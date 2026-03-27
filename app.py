@@ -12,17 +12,18 @@ def extract_media():
     url = data.get('url')
     passcode = data.get('passcode')
 
-    # THE DIGITAL PADLOCK: Change "Fetch2026" to whatever password you want
+    # THE DIGITAL PADLOCK
     if passcode != "Fetch2026": 
         return jsonify({"error": "Access denied. Invalid passcode."}), 401
 
     if not url:
         return jsonify({"error": "Please provide a valid link."}), 400
 
-    # Engine settings for best quality without using server storage
+    # Engine settings
     ydl_opts = {
         'format': 'best',
         'quiet': True,
+        'no_warnings': True
     }
 
     try:
@@ -32,7 +33,8 @@ def extract_media():
             
             return jsonify({"success": True, "video_url": video_url})
     except Exception as e:
-        return jsonify({"success": False, "error": "Could not extract video. The link might be private."}), 500
+        # DIAGNOSTIC MODE: This will now send the exact error message to your screen
+        return jsonify({"success": False, "error": f"Engine Error: {str(e)}"}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
