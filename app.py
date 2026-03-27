@@ -1,10 +1,28 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import yt_dlp
+import os
+import shutil
 
 app = Flask(__name__)
 # This allows your UI to securely talk to this backend
 CORS(app) 
+
+# --- THE FIX: Move cookies to a writable temporary folder ---
+SECRET_COOKIE_PATH = '/etc/secrets/cookies.txt'
+WRITABLE_COOKIE_PATH = '/tmp/cookies.txt'
+
+def setup_cookies():
+    # If the secret vault has cookies, copy them to the writable scratchpad
+    if os.path.exists(SECRET_COOKIE_PATH):
+        try:
+            shutil.copyfile(SECRET_COOKIE_PATH, WRITABLE_COOKIE_PATH)
+        except Exception as e:
+            print(f"Cookie copy failed: {e}")
+
+# Run the setup right when the server starts
+setup_cookies()
+# ----------------------------------------------------------
 
 @app.route('/extract', methods=['POST'])
 def extract_media():
@@ -19,13 +37,16 @@ def extract_media():
     if not url:
         return jsonify({"error": "Please provide a valid link."}), 400
 
-    # Engine settings - Now equipped with the VIP Pass (Cookies)
+    # Engine settings
     ydl_opts = {
         'format': 'best',
         'quiet': True,
         'no_warnings': True,
-        'cookiefile': '/etc/secrets/cookies.txt' # Looks for the secret file in Render
     }
+
+    # Only attach the VIP pass if it successfully copied to the scratchpad
+    if os.path.exists(WRITABLE_COOKIE_PATH):
+        ydl_opts['cookiefile'] = WRITABLE_COOKIE_PATH
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
