@@ -5,7 +5,6 @@ import os
 import shutil
 
 app = Flask(__name__)
-# This allows your UI to securely talk to this backend
 CORS(app) 
 
 # --- Cookie Scratchpad Setup ---
@@ -35,10 +34,16 @@ def extract_media():
     if not url:
         return jsonify({"error": "Please provide a valid link."}), 400
 
-    # THE FIX: We removed the strict 'format' rule so yt-dlp NEVER crashes here.
+    # THE FIX: Disguise the server as an Android device to bypass Javascript puzzles
     ydl_opts = {
+        'format': 'best[ext=mp4]/b',
         'quiet': True,
         'no_warnings': True,
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'ios']
+            }
+        }
     }
 
     if os.path.exists(WRITABLE_COOKIE_PATH):
@@ -46,34 +51,13 @@ def extract_media():
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # yt-dlp fetches the giant dictionary of every possible file version
             info = ydl.extract_info(url, download=False)
             
-            video_url = None
-            
-            # 1. We manually hunt for a file that contains BOTH video and audio codecs
-            formats = info.get('formats', [])
-            merged_formats = [
-                f for f in formats 
-                if f.get('vcodec') and f.get('vcodec') != 'none' 
-                and f.get('acodec') and f.get('acodec') != 'none'
-            ]
-            
-            if merged_formats:
-                # Sort them by resolution height (biggest first)
-                best_merged = sorted(merged_formats, key=lambda x: x.get('height', 0) or 0, reverse=True)[0]
-                video_url = best_merged.get('url')
-            
-            # 2. Fallback: If YouTube stripped all merged files, grab the default URL
-            if not video_url:
-                video_url = info.get('url')
-                
-            # 3. Final Fallback: Grab the first requested format available
-            if not video_url and 'requested_formats' in info:
-                video_url = info['requested_formats'][0].get('url')
+            # Safely extract the direct link
+            video_url = info.get('url') or (info.get('entries', [{}])[0].get('url') if 'entries' in info else None)
 
             if not video_url:
-                return jsonify({"success": False, "error": "YouTube did not provide any playable links."}), 500
+                return jsonify({"success": False, "error": "YouTube blocked the mobile API request."}), 500
             
             return jsonify({"success": True, "video_url": video_url})
             
