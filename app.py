@@ -35,9 +35,8 @@ def extract_media():
     if not url:
         return jsonify({"error": "Please provide a valid link."}), 400
 
-    # THE FIX: The Bulletproof Format Fallback
+    # THE FIX: We removed the strict 'format' rule so yt-dlp NEVER crashes here.
     ydl_opts = {
-        'format': '22/18/b',
         'quiet': True,
         'no_warnings': True,
     }
@@ -47,17 +46,37 @@ def extract_media():
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # yt-dlp fetches the giant dictionary of every possible file version
             info = ydl.extract_info(url, download=False)
             
-            # Safely extract the direct link
-            if 'url' in info:
-                video_url = info['url']
-            elif 'entries' in info and len(info['entries']) > 0:
-                video_url = info['entries'][0].get('url')
-            else:
-                return jsonify({"success": False, "error": "Could not find a unified video link."}), 500
+            video_url = None
+            
+            # 1. We manually hunt for a file that contains BOTH video and audio codecs
+            formats = info.get('formats', [])
+            merged_formats = [
+                f for f in formats 
+                if f.get('vcodec') and f.get('vcodec') != 'none' 
+                and f.get('acodec') and f.get('acodec') != 'none'
+            ]
+            
+            if merged_formats:
+                # Sort them by resolution height (biggest first)
+                best_merged = sorted(merged_formats, key=lambda x: x.get('height', 0) or 0, reverse=True)[0]
+                video_url = best_merged.get('url')
+            
+            # 2. Fallback: If YouTube stripped all merged files, grab the default URL
+            if not video_url:
+                video_url = info.get('url')
+                
+            # 3. Final Fallback: Grab the first requested format available
+            if not video_url and 'requested_formats' in info:
+                video_url = info['requested_formats'][0].get('url')
+
+            if not video_url:
+                return jsonify({"success": False, "error": "YouTube did not provide any playable links."}), 500
             
             return jsonify({"success": True, "video_url": video_url})
+            
     except Exception as e:
         return jsonify({"success": False, "error": f"Engine Error: {str(e)}"}), 500
 
