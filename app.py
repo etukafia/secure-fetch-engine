@@ -5,6 +5,7 @@ import os
 import shutil
 
 app = Flask(__name__)
+# This allows your UI to securely talk to this backend
 CORS(app) 
 
 # --- Cookie Scratchpad Setup ---
@@ -34,9 +35,9 @@ def extract_media():
     if not url:
         return jsonify({"error": "Please provide a valid link."}), 400
 
-    # THE FIX: Disguise the server as an Android device to bypass Javascript puzzles
+    # THE REAL FIX: Notice there is NO 'format' line here at all. 
+    # This guarantees yt-dlp will never throw the "Requested format not available" error again.
     ydl_opts = {
-        'format': 'best[ext=mp4]/b',
         'quiet': True,
         'no_warnings': True,
         'extractor_args': {
@@ -51,13 +52,30 @@ def extract_media():
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # Get the giant dictionary of data without trying to pick a format yet
             info = ydl.extract_info(url, download=False)
             
-            # Safely extract the direct link
-            video_url = info.get('url') or (info.get('entries', [{}])[0].get('url') if 'entries' in info else None)
-
+            video_url = None
+            
+            # Step 1: Manually hunt through the formats for one that has BOTH video and audio
+            if 'formats' in info:
+                merged_formats = [
+                    f for f in info['formats'] 
+                    if f.get('vcodec') != 'none' and f.get('acodec') != 'none'
+                ]
+                
+                if merged_formats:
+                    # Sort them to get the highest quality one available
+                    merged_formats.sort(key=lambda x: x.get('height', 0) or 0, reverse=True)
+                    video_url = merged_formats[0].get('url')
+            
+            # Step 2: If we couldn't find a merged one, just grab the default URL YouTube gave us
             if not video_url:
-                return jsonify({"success": False, "error": "YouTube blocked the mobile API request."}), 500
+                video_url = info.get('url')
+
+            # Step 3: If it's STILL empty, throw an error we can actually read
+            if not video_url:
+                return jsonify({"success": False, "error": "YouTube sent the data, but no playable links were found inside."}), 500
             
             return jsonify({"success": True, "video_url": video_url})
             
