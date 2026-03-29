@@ -50,21 +50,27 @@ def extract_media():
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
+            video_url = None
             
-            # THE FIX: Ultra-forgiving extraction.
-            # 1. Try to grab the default link it found
-            video_url = info.get('url')
+            # THE REAL FIX: Hunt for a proper video file, not a text playlist.
+            if 'formats' in info:
+                # We specifically want 'http' or 'https' protocols. 
+                # If it says 'm3u8', it is a text playlist and will not play!
+                real_mp4s = [
+                    f for f in info['formats'] 
+                    if f.get('ext') == 'mp4' and f.get('protocol') in ['http', 'https']
+                ]
+                if real_mp4s:
+                    # Sort by resolution height to get the best quality
+                    real_mp4s.sort(key=lambda x: x.get('height', 0) or 0, reverse=True)
+                    video_url = real_mp4s[0].get('url')
             
-            # 2. Check if it's hiding in a different folder
+            # Fallbacks only if we absolutely have to
             if not video_url and 'requested_formats' in info:
                 video_url = info['requested_formats'][0].get('url')
-
-            # 3. If all else fails, just grab the biggest MP4 we can find
-            if not video_url and 'formats' in info:
-                mp4s = [f for f in info['formats'] if f.get('ext') == 'mp4' and f.get('url')]
-                if mp4s:
-                    mp4s.sort(key=lambda x: x.get('height', 0) or 0, reverse=True)
-                    video_url = mp4s[0].get('url')
+                
+            if not video_url:
+                video_url = info.get('url')
             
             if not video_url:
                 return jsonify({"success": False, "error": "No playable links were found."}), 500
