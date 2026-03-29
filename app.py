@@ -1,86 +1,101 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
-import yt_dlp
-import os
-import shutil
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secure Media Fetch</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white font-sans min-h-screen flex items-center justify-center p-4">
 
-app = Flask(__name__)
-# This allows your UI to securely talk to this backend
-CORS(app) 
+    <div class="bg-gray-800 rounded-2xl shadow-2xl p-6 md:p-8 w-full max-w-md mx-auto border border-gray-700">
+        
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-purple-500 mb-2">
+                Secure Fetch
+            </h1>
+            <p class="text-sm text-gray-400">Personal Downloader Node</p>
+        </div>
 
-# --- Cookie Scratchpad Setup ---
-SECRET_COOKIE_PATH = '/etc/secrets/cookies.txt'
-WRITABLE_COOKIE_PATH = '/tmp/cookies.txt'
+        <div class="flex flex-col gap-4 mb-6">
+            <input type="password" id="passcode-input" placeholder="Enter secret passcode..."
+                   class="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-600 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 text-gray-100 placeholder-gray-500 transition-all">
+            
+            <input type="url" id="link-input" placeholder="Paste video link here..."
+                   class="w-full px-4 py-3 rounded-xl bg-gray-900 border border-gray-600 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 text-gray-100 placeholder-gray-500 transition-all">
+            
+            <button id="extract-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-4 rounded-xl shadow-lg shadow-indigo-500/30 transition-all duration-200 active:scale-95">
+                Extract Media
+            </button>
+        </div>
 
-def setup_cookies():
-    if os.path.exists(SECRET_COOKIE_PATH):
-        try:
-            shutil.copyfile(SECRET_COOKIE_PATH, WRITABLE_COOKIE_PATH)
-        except Exception as e:
-            print(f"Cookie copy failed: {e}")
+        <div id="video-container" class="w-full min-h-[300px] bg-gray-900 rounded-xl border-2 border-dashed border-gray-600 flex flex-col items-center justify-center mb-6 overflow-hidden transition-all">
+            <div class="text-center p-4" id="placeholder-content">
+                <svg class="w-10 h-10 mx-auto text-gray-500 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                <span class="text-gray-500 text-sm font-medium">Video preview will appear here</span>
+            </div>
+        </div>
 
-setup_cookies()
-# -------------------------------
+        <button id="download-btn" style="display: none;" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-3 px-4 rounded-xl shadow-lg shadow-emerald-500/30 transition-all duration-200 active:scale-95">
+            Save to Device
+        </button>
 
-@app.route('/extract', methods=['POST'])
-def extract_media():
-    data = request.json
-    url = data.get('url')
-    passcode = data.get('passcode')
+    </div>
 
-    # THE DIGITAL PADLOCK
-    if passcode != "Fetch2026": 
-        return jsonify({"error": "Access denied. Invalid passcode."}), 401
+    <script>
+        // ==========================================
+        // IMPORTANT: PASTE YOUR RENDER URL RIGHT HERE (Do not put a slash at the end)
+        const RENDER_URL = 'YOUR_RENDER_URL_HERE'; 
+        // ==========================================
 
-    if not url:
-        return jsonify({"error": "Please provide a valid link."}), 400
+        const input = document.getElementById('link-input');
+        const passcodeInput = document.getElementById('passcode-input');
+        const extractBtn = document.getElementById('extract-btn');
+        const downloadBtn = document.getElementById('download-btn');
+        const videoContainer = document.getElementById('video-container');
 
-    # THE REAL FIX: Notice there is NO 'format' line here at all. 
-    # This guarantees yt-dlp will never throw the "Requested format not available" error again.
-    ydl_opts = {
-        'quiet': True,
-        'no_warnings': True,
-        'extractor_args': {
-            'youtube': {
-                'player_client': ['android', 'ios']
+        extractBtn.addEventListener('click', async () => {
+            const url = input.value;
+            const secretCode = passcodeInput.value;
+
+            if (!secretCode) return alert('Please enter the passcode!');
+            if (!url) return alert('Please paste a link first!');
+
+            extractBtn.innerText = 'Extracting...';
+            extractBtn.disabled = true;
+
+            try {
+                const response = await fetch(`${RENDER_URL}/extract`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url: url, passcode: secretCode }) 
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    videoContainer.className = "w-full bg-gray-900 rounded-xl border border-gray-600 mb-6 overflow-hidden shadow-inner";
+                    videoContainer.innerHTML = `
+                        <video src="${data.video_url}" controls autoplay loop muted 
+                               class="w-full h-auto block rounded-xl">
+                        </video>
+                    `;
+                    
+                    downloadBtn.style.display = 'block';
+                    // THE FIX: Routes the download request through your Render server
+                    downloadBtn.onclick = () => {
+                        window.location.href = `${RENDER_URL}/download?url=${encodeURIComponent(data.video_url)}`;
+                    };
+                } else {
+                    alert(data.error); 
+                }
+            } catch (error) {
+                alert('Server error or waking up. Try again in a moment!');
+            } finally {
+                extractBtn.innerText = 'Extract Media';
+                extractBtn.disabled = false;
             }
-        }
-    }
-
-    if os.path.exists(WRITABLE_COOKIE_PATH):
-        ydl_opts['cookiefile'] = WRITABLE_COOKIE_PATH
-
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Get the giant dictionary of data without trying to pick a format yet
-            info = ydl.extract_info(url, download=False)
-            
-            video_url = None
-            
-            # Step 1: Manually hunt through the formats for one that has BOTH video and audio
-            if 'formats' in info:
-                merged_formats = [
-                    f for f in info['formats'] 
-                    if f.get('vcodec') != 'none' and f.get('acodec') != 'none'
-                ]
-                
-                if merged_formats:
-                    # Sort them to get the highest quality one available
-                    merged_formats.sort(key=lambda x: x.get('height', 0) or 0, reverse=True)
-                    video_url = merged_formats[0].get('url')
-            
-            # Step 2: If we couldn't find a merged one, just grab the default URL YouTube gave us
-            if not video_url:
-                video_url = info.get('url')
-
-            # Step 3: If it's STILL empty, throw an error we can actually read
-            if not video_url:
-                return jsonify({"success": False, "error": "YouTube sent the data, but no playable links were found inside."}), 500
-            
-            return jsonify({"success": True, "video_url": video_url})
-            
-    except Exception as e:
-        return jsonify({"success": False, "error": f"Engine Error: {str(e)}"}), 500
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=10000)
+        });
+    </script>
+</body>
+</html>
