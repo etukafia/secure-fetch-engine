@@ -51,21 +51,21 @@ def extract_media():
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             
-            video_url = None
+            # THE FIX: Ultra-forgiving extraction.
+            # 1. Try to grab the default link it found
+            video_url = info.get('url')
             
-            if 'formats' in info:
-                merged_formats = [
-                    f for f in info['formats'] 
-                    if f.get('vcodec') and f.get('vcodec') != 'none' and f.get('acodec') and f.get('acodec') != 'none'
-                ]
-                
-                if merged_formats:
-                    merged_formats.sort(key=lambda x: x.get('height', 0) or 0, reverse=True)
-                    video_url = merged_formats[0].get('url')
-            
-            if not video_url:
-                video_url = info.get('url')
+            # 2. Check if it's hiding in a different folder
+            if not video_url and 'requested_formats' in info:
+                video_url = info['requested_formats'][0].get('url')
 
+            # 3. If all else fails, just grab the biggest MP4 we can find
+            if not video_url and 'formats' in info:
+                mp4s = [f for f in info['formats'] if f.get('ext') == 'mp4' and f.get('url')]
+                if mp4s:
+                    mp4s.sort(key=lambda x: x.get('height', 0) or 0, reverse=True)
+                    video_url = mp4s[0].get('url')
+            
             if not video_url:
                 return jsonify({"success": False, "error": "No playable links were found."}), 500
             
@@ -74,7 +74,7 @@ def extract_media():
     except Exception as e:
         return jsonify({"success": False, "error": f"Engine Error: {str(e)}"}), 500
 
-# --- THE NEW PROXY DOWNLOADER ---
+# --- THE PROXY DOWNLOADER ---
 @app.route('/download', methods=['GET'])
 def download_video():
     video_url = request.args.get('url')
@@ -82,14 +82,12 @@ def download_video():
         return "No URL provided", 400
         
     try:
-        # Disguise the download request as a normal browser
         headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
             'Referer': 'https://twitter.com/'
         }
         r = requests.get(video_url, stream=True, headers=headers)
         
-        # Stream the file directly to the user's device
         return Response(
             stream_with_context(r.iter_content(chunk_size=8192)),
             content_type=r.headers.get('content-type', 'video/mp4'),
