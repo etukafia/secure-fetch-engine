@@ -1,4 +1,4 @@
 Flask==3.0.2
 flask-cors==4.0.0
-yt-dlp
 requests
+https://github.com/yt-dlp/yt-dlp/archive/master.zip
