@@ -8,7 +8,6 @@ import requests
 app = Flask(__name__)
 CORS(app) 
 
-# --- Cookie Scratchpad Setup ---
 SECRET_COOKIE_PATH = '/etc/secrets/cookies.txt'
 WRITABLE_COOKIE_PATH = '/tmp/cookies.txt'
 
@@ -20,13 +19,14 @@ def setup_cookies():
             print(f"Cookie copy failed: {e}")
 
 setup_cookies()
-# -------------------------------
 
 @app.route('/extract', methods=['POST'])
 def extract_media():
     data = request.json
     url = data.get('url')
     passcode = data.get('passcode')
+    # NEW: The engine now checks which quality button you clicked
+    quality = data.get('quality', 'best') 
 
     if passcode != "Fetch2026": 
         return jsonify({"error": "Access denied. Invalid passcode."}), 401
@@ -34,40 +34,57 @@ def extract_media():
     if not url:
         return jsonify({"error": "Please provide a valid link."}), 400
 
-    # THE FIX: TV Disguise + Super Forgiving Format Hunter
     ydl_opts = {
-        'format': 'b[ext=mp4]/b/w', 
         'quiet': True,
         'no_warnings': True,
         'extractor_args': {
-            'youtube': {
-                'player_client': ['tv', 'web']
-            }
+            'youtube': {'player_client': ['tv', 'web']}
         }
     }
 
     if os.path.exists(WRITABLE_COOKIE_PATH):
         ydl_opts['cookiefile'] = WRITABLE_COOKIE_PATH
 
+    # If the user just wants the MP3/Audio
+    if quality == 'audio':
+        ydl_opts['format'] = 'bestaudio/best'
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             video_url = None
             
-            # 1. Look for standard http/https video files first
-            if 'formats' in info:
-                real_mp4s = [
-                    f for f in info['formats'] 
-                    if f.get('ext') == 'mp4' and f.get('protocol') in ['http', 'https']
-                ]
-                if real_mp4s:
-                    real_mp4s.sort(key=lambda x: x.get('height', 0) or 0, reverse=True)
-                    video_url = real_mp4s[0].get('url')
+            # --- THE UPGRADED SMART FILTER ---
+            if 'formats' in info and quality != 'audio':
+                is_youtube = 'youtube' in info.get('extractor', '').lower()
+                valid_formats = []
+                
+                for f in info['formats']:
+                    if f.get('protocol') not in ['http', 'https']:
+                        continue
+                    if f.get('vcodec') == 'none':
+                        continue
+                    if is_youtube and f.get('acodec') == 'none':
+                        continue
+                    if f.get('ext') != 'mp4':
+                        continue
+                        
+                    # Filter out resolutions higher than what the user requested
+                    h = f.get('height', 0) or 0
+                    if quality == '720p' and h > 720:
+                        continue
+                    if quality == '480p' and h > 480:
+                        continue
+                        
+                    valid_formats.append(f)
+                    
+                if valid_formats:
+                    valid_formats.sort(key=lambda x: x.get('height', 0) or 0, reverse=True)
+                    video_url = valid_formats[0].get('url')
             
-            # 2. Fallbacks
+            # Fallbacks
             if not video_url and 'requested_formats' in info:
                 video_url = info['requested_formats'][0].get('url')
-                
             if not video_url:
                 video_url = info.get('url')
             
@@ -79,7 +96,6 @@ def extract_media():
     except Exception as e:
         return jsonify({"success": False, "error": f"Engine Error: {str(e)}"}), 500
 
-# --- THE PROXY DOWNLOADER ---
 @app.route('/download', methods=['GET'])
 def download_video():
     video_url = request.args.get('url')
@@ -97,7 +113,7 @@ def download_video():
             stream_with_context(r.iter_content(chunk_size=8192)),
             content_type=r.headers.get('content-type', 'video/mp4'),
             headers={
-                'Content-Disposition': 'attachment; filename="secure_fetch_video.mp4"'
+                'Content-Disposition': 'attachment; filename="secure_fetch_media.mp4"'
             }
         )
     except Exception as e:
