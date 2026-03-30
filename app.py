@@ -34,12 +34,14 @@ def extract_media():
     if not url:
         return jsonify({"error": "Please provide a valid link."}), 400
 
+    # THE FIX: TV Disguise + Super Forgiving Format Hunter
     ydl_opts = {
+        'format': 'b[ext=mp4]/b/w', 
         'quiet': True,
         'no_warnings': True,
         'extractor_args': {
             'youtube': {
-                'player_client': ['android', 'ios']
+                'player_client': ['tv', 'web']
             }
         }
     }
@@ -52,20 +54,17 @@ def extract_media():
             info = ydl.extract_info(url, download=False)
             video_url = None
             
-            # THE REAL FIX: Hunt for a proper video file, not a text playlist.
+            # 1. Look for standard http/https video files first
             if 'formats' in info:
-                # We specifically want 'http' or 'https' protocols. 
-                # If it says 'm3u8', it is a text playlist and will not play!
                 real_mp4s = [
                     f for f in info['formats'] 
                     if f.get('ext') == 'mp4' and f.get('protocol') in ['http', 'https']
                 ]
                 if real_mp4s:
-                    # Sort by resolution height to get the best quality
                     real_mp4s.sort(key=lambda x: x.get('height', 0) or 0, reverse=True)
                     video_url = real_mp4s[0].get('url')
             
-            # Fallbacks only if we absolutely have to
+            # 2. Fallbacks
             if not video_url and 'requested_formats' in info:
                 video_url = info['requested_formats'][0].get('url')
                 
